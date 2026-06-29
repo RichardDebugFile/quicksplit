@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://db:5432/quicksplit}
+    driver-class-name: org.postgresql.Driver
+    username: ${SPRING_DATASOURCE_USERNAME:quicksplit}
+    password: ${SPRING_DATASOURCE_PASSWORD:quicksplit}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+
+# En produccion el secreto JWT es OBLIGATORIO via variable de entorno.
+quicksplit:
+  jwt:
+    secret: ${QUICKSPLIT_JWT_SECRET}
+
+logging:
+  level:
+    root: WARN
+    com.quicksplit: INFO

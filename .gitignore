@@ -1,0 +1,29 @@
+# ---- Java / Maven ----
+backend/target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# ---- Node / Frontend ----
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# ---- SO ----
+.DS_Store
+Thumbs.db
+
+# ---- Secretos / entorno ----
+.env
+*.env.local
+
+# ---- Reportes SAST locales ----
+.scannerwork/
+*.sarif
