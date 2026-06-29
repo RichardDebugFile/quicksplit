@@ -1,0 +1,91 @@
+name: SAST - SonarQube
+
+# Analisis estatico de seguridad (SAST) con SonarQube Cloud (SonarCloud).
+# Requiere el secreto SONAR_TOKEN configurado en el repositorio
+# (Settings -> Secrets and variables -> Actions).
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sonar:
+    name: SonarQube · analisis SAST
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: https://sonarcloud.io
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historial completo: mejora la asignacion de issues por autor/fecha.
+          fetch-depth: 0
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Backend · compilar + cobertura (JaCoCo)
+        working-directory: backend
+        run: mvn -B verify --no-transfer-progress
+
+      - name: Configurar Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend · dependencias + cobertura (lcov)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run coverage
+
+      - name: SonarQube Scan (SAST)
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@v3
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+      - name: Exportar retroalimentacion de Sonar como artefacto
+        if: ${{ env.SONAR_TOKEN != '' }}
+        continue-on-error: true
+        run: |
+          set -e
+          PROJECT_KEY=$(grep '^sonar.projectKey=' sonar-project.properties | cut -d'=' -f2)
+          echo "Esperando a que SonarCloud procese el analisis..."
+          sleep 25
+          mkdir -p sonar-report
+          # Issues detectados (vulnerabilidades, bugs, code smells, security hotspots)
+          curl -s -u "${SONAR_TOKEN}:" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=${PROJECT_KEY}&ps=500" \
+            -o sonar-report/sonar-issues.json
+          # Estado del Quality Gate
+          curl -s -u "${SONAR_TOKEN}:" \
+            "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${PROJECT_KEY}" \
+            -o sonar-report/quality-gate.json
+          # Security hotspots
+          curl -s -u "${SONAR_TOKEN}:" \
+            "https://sonarcloud.io/api/hotspots/search?projectKey=${PROJECT_KEY}&ps=500" \
+            -o sonar-report/security-hotspots.json
+          echo "Resumen del analisis SAST:" > sonar-report/RESUMEN.txt
+          echo "Proyecto: ${PROJECT_KEY}" >> sonar-report/RESUMEN.txt
+          echo "Dashboard: https://sonarcloud.io/project/overview?id=${PROJECT_KEY}" >> sonar-report/RESUMEN.txt
+
+      - name: Publicar artefacto de retroalimentacion SAST
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-sonarqube-report
+          path: sonar-report/
