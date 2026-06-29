@@ -51,6 +51,23 @@ jobs:
           npm ci
           npm run coverage
 
+      # El plan Free de SonarCloud solo permite la rama principal. Nos aseguramos de que la
+      # rama principal del proyecto se llame 'main' (igual que en GitHub) para que el analisis
+      # del push a main se trate como rama principal y no como rama secundaria (bloqueada).
+      - name: Asegurar rama principal 'main' en SonarCloud
+        if: ${{ env.SONAR_TOKEN != '' }}
+        continue-on-error: true
+        run: |
+          KEY=$(grep '^sonar.projectKey=' sonar-project.properties | cut -d'=' -f2)
+          # Si analisis previos crearon una rama secundaria 'main', se elimina para evitar colision.
+          curl -s -u "${SONAR_TOKEN}:" -X POST \
+            "https://sonarcloud.io/api/project_branches/delete?project=${KEY}&branch=main" \
+            -o /dev/null -w "delete stray branch main -> HTTP %{http_code}\n" || true
+          # Se renombra la rama principal del proyecto a 'main' (idempotente).
+          curl -s -u "${SONAR_TOKEN}:" -X POST \
+            "https://sonarcloud.io/api/project_branches/rename?project=${KEY}&name=main" \
+            -o /dev/null -w "rename main branch -> HTTP %{http_code}\n" || true
+
       - name: SonarQube Scan (SAST)
         if: ${{ env.SONAR_TOKEN != '' }}
         uses: SonarSource/sonarqube-scan-action@v3
@@ -76,26 +93,25 @@ jobs:
             { [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; } && break
             sleep 6
           done
-          # Rama analizada y pequena espera para que el indice de busqueda propague.
-          BRANCH="${GITHUB_REF_NAME:-main}"
+          # Pequena espera para que el indice de busqueda propague tras el procesamiento.
           sleep 8
 
-          # 2) Ya procesado: descargar la retroalimentacion real (especificando la rama).
+          # 2) Ya procesado: descargar la retroalimentacion real de la rama principal.
           # Issues (vulnerabilidades, bugs, code smells)
           curl -s -u "${SONAR_TOKEN}:" \
-            "https://sonarcloud.io/api/issues/search?componentKeys=${PROJECT_KEY}&branch=${BRANCH}&ps=500" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=${PROJECT_KEY}&ps=500" \
             -o sonar-report/sonar-issues.json
           # Estado del Quality Gate
           curl -s -u "${SONAR_TOKEN}:" \
-            "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${PROJECT_KEY}&branch=${BRANCH}" \
+            "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${PROJECT_KEY}" \
             -o sonar-report/quality-gate.json
           # Security hotspots
           curl -s -u "${SONAR_TOKEN}:" \
-            "https://sonarcloud.io/api/hotspots/search?projectKey=${PROJECT_KEY}&branch=${BRANCH}&ps=500" \
+            "https://sonarcloud.io/api/hotspots/search?projectKey=${PROJECT_KEY}&ps=500" \
             -o sonar-report/security-hotspots.json
           # Metricas resumidas
           curl -s -u "${SONAR_TOKEN}:" \
-            "https://sonarcloud.io/api/measures/component?component=${PROJECT_KEY}&branch=${BRANCH}&metricKeys=bugs,vulnerabilities,security_hotspots,code_smells,coverage,duplicated_lines_density,ncloc" \
+            "https://sonarcloud.io/api/measures/component?component=${PROJECT_KEY}&metricKeys=bugs,vulnerabilities,security_hotspots,code_smells,coverage,duplicated_lines_density,ncloc" \
             -o sonar-report/measures.json
 
           # 3) Resumen legible.
