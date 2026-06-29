@@ -62,12 +62,23 @@ jobs:
         if: ${{ env.SONAR_TOKEN != '' }}
         continue-on-error: true
         run: |
-          set -e
           PROJECT_KEY=$(grep '^sonar.projectKey=' sonar-project.properties | cut -d'=' -f2)
-          echo "Esperando a que SonarCloud procese el analisis..."
-          sleep 25
           mkdir -p sonar-report
-          # Issues detectados (vulnerabilidades, bugs, code smells, security hotspots)
+
+          # 1) Esperar a que SonarCloud TERMINE de procesar el analisis (Compute Engine task).
+          REPORT_TASK=$(find . -name report-task.txt | head -n1)
+          TASK_URL=$(grep '^ceTaskUrl=' "$REPORT_TASK" | cut -d'=' -f2-)
+          echo "Tarea de analisis: $TASK_URL"
+          for i in $(seq 1 40); do
+            STATUS=$(curl -s -u "${SONAR_TOKEN}:" "$TASK_URL" | jq -r '.task.status')
+            echo "Intento $i -> estado: $STATUS"
+            [ "$STATUS" = "SUCCESS" ] && break
+            { [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; } && break
+            sleep 6
+          done
+
+          # 2) Ya procesado: descargar la retroalimentacion real.
+          # Issues (vulnerabilidades, bugs, code smells)
           curl -s -u "${SONAR_TOKEN}:" \
             "https://sonarcloud.io/api/issues/search?componentKeys=${PROJECT_KEY}&ps=500" \
             -o sonar-report/sonar-issues.json
@@ -79,9 +90,23 @@ jobs:
           curl -s -u "${SONAR_TOKEN}:" \
             "https://sonarcloud.io/api/hotspots/search?projectKey=${PROJECT_KEY}&ps=500" \
             -o sonar-report/security-hotspots.json
-          echo "Resumen del analisis SAST:" > sonar-report/RESUMEN.txt
-          echo "Proyecto: ${PROJECT_KEY}" >> sonar-report/RESUMEN.txt
-          echo "Dashboard: https://sonarcloud.io/project/overview?id=${PROJECT_KEY}" >> sonar-report/RESUMEN.txt
+          # Metricas resumidas
+          curl -s -u "${SONAR_TOKEN}:" \
+            "https://sonarcloud.io/api/measures/component?component=${PROJECT_KEY}&metricKeys=bugs,vulnerabilities,security_hotspots,code_smells,coverage,duplicated_lines_density,ncloc" \
+            -o sonar-report/measures.json
+
+          # 3) Resumen legible.
+          {
+            echo "===== Retroalimentacion SAST - SonarQube ====="
+            echo "Proyecto : ${PROJECT_KEY}"
+            echo "Dashboard: https://sonarcloud.io/project/overview?id=${PROJECT_KEY}"
+            echo "Quality Gate: $(jq -r '.projectStatus.status' sonar-report/quality-gate.json)"
+            echo "Issues totales: $(jq -r '.total' sonar-report/sonar-issues.json)"
+            echo "Security Hotspots: $(jq -r '.paging.total' sonar-report/security-hotspots.json)"
+            echo "--- Metricas ---"
+            jq -r '.component.measures[]? | "\(.metric): \(.value)"' sonar-report/measures.json
+          } > sonar-report/RESUMEN.txt
+          cat sonar-report/RESUMEN.txt
 
       - name: Publicar artefacto de retroalimentacion SAST
         if: ${{ env.SONAR_TOKEN != '' }}
