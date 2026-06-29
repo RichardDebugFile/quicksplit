@@ -109,25 +109,39 @@ En [docs/EVIDENCIAS.md](EVIDENCIAS.md) hay una checklist con los pantallazos exa
 
 ---
 
-## 6. Retroalimentación de la herramienta (resultados)
+## 6. Retroalimentación de la herramienta (resultados reales)
 
-> Esta sección se completa **después** de la primera corrida con los hallazgos reales.
+Resultados de la primera corrida del SAST sobre el repositorio (artefacto
+`sast-sonarqube-report`, ~2.311 líneas analizadas entre Java y TypeScript):
 
-- **Quality Gate:** _(Passed / Failed)_
-- **Vulnerabilities:** _N_
-- **Security Hotspots:** _N_
-- **Bugs:** _N_
-- **Code Smells:** _N_
-- **Coverage:** _XX %_
+| Métrica            | Valor |
+|--------------------|-------|
+| **Vulnerabilities**| **0** |
+| **Security Hotspots** | **0** |
+| **Bugs**           | **0** |
+| **Code Smells**    | **10** |
+| **Coverage**       | **52.5 %** |
+| **Duplicaciones**  | 0.0 % |
+
+> **Lectura:** SonarQube **no detectó vulnerabilidades, bugs ni *security hotspots***; los 10
+> hallazgos son *code smells* de mantenibilidad de severidad baja (INFO/MINOR). Es una buena
+> postura de seguridad para una primera versión.
 
 ### Hallazgos principales y acciones
 
-| # | Tipo | Archivo | Descripción | Acción tomada |
-|---|------|---------|-------------|---------------|
-| 1 |      |         |             |               |
-| 2 |      |         |             |               |
+| # | Tipo | Severidad | Archivo | Descripción | Acción |
+|---|------|-----------|---------|-------------|--------|
+| 1 | Code Smell | INFO | `JwtService.java` | Usar la API `java.time` en vez de `java.util.Date` | Aceptado (mejora a futuro; `Date` es suficiente para la expiración del JWT) |
+| 2 | Code Smell | MINOR | `BalanceService.java` | Reemplazar lambda por referencia a método `BalanceDto::balance` | Corregible (estético) |
+| 3 | Code Smell | MINOR | `AuthProvider.tsx`, `ProtectedRoute.tsx` | Marcar las props del componente como *read-only* | Corregible (estético) |
+| 4 | Code Smell | INFO | `SplitType.java`, `CreateExpenseRequest.java` | "Complete el TODO" — **falso positivo**: la regla detecta la palabra *"todo"* (español, *"todo el grupo"*) como si fuera un comentario `TODO` | Descartado (falso positivo idiomático) |
 
-> El detalle completo y exportable está en el artefacto `sast-sonarqube-report` y en el dashboard.
+> El falso positivo del punto 4 es un buen ejemplo para el documento: muestra que una herramienta
+> SAST también puede generar ruido y que parte del trabajo es **triar** los hallazgos.
+>
+> El detalle completo y exportable está en el artefacto `sast-sonarqube-report`
+> (`sonar-issues.json`, `security-hotspots.json`, `quality-gate.json`, `measures.json`, `RESUMEN.txt`)
+> y en el dashboard de SonarCloud.
 
 ---
 
